@@ -37,6 +37,7 @@ void find(char *dir, char *file)
     while (read(fd, &de, sizeof(de)) == sizeof(de))
     {
         // de.inum==0表示这是一块已经初始化并且可以用来创建文件或者文件夹的位置，所以在读取的过程中应当无视这一块空间
+        // 翻译成人话：该目录下没有任何文件
         if (de.inum == 0)
             continue;
 
