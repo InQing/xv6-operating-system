@@ -8,8 +8,11 @@ void perror(const char *str)
     exit(-1);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    if (argc != 1)
+        perror("extra arguments!");
+
     int fd_1[2]; // 管道的文件描述符
     int fd_2[2];
     char buf[100]; // 读入缓冲区
@@ -30,7 +33,7 @@ int main(void)
         close(fd_1[1]);
         read(fd_1[0], buf, sizeof(buf));
         int pid_child = getpid();
-        printf("<%d>:%s\n", pid_child, buf);
+        printf("%d:%s\n", pid_child, buf);
 
         close(fd_2[0]);
         write(fd_2[1], "received pong", 14);
@@ -43,7 +46,7 @@ int main(void)
         close(fd_2[1]);
         read(fd_2[0], buf, sizeof(buf));
         int pid_father = getpid();
-        printf("<%d>:%s\n", pid_father, buf);
+        printf("%d:%s\n", pid_father, buf);
     }
 
     close(fd_1[0]);
