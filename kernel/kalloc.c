@@ -20,7 +20,7 @@ struct run {
 
 struct {
   struct spinlock lock;
-  struct run *freelist;
+  struct run *freelist; // 指向第一块空闲内存
 } kmem;
 
 void
@@ -55,7 +55,8 @@ kfree(void *pa)
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
-
+  
+  // 当free一块page大小的内存时，用头插法插到kmem（空闲链表）的头部
   acquire(&kmem.lock);
   r->next = kmem.freelist;
   kmem.freelist = r;
@@ -79,4 +80,20 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+// collect the amount of free memory
+uint64
+kamount(void){
+  uint64 amount = 0; // 空闲内存块的数量
+
+  acquire(&kmem.lock); // 上锁，不允许被打断
+  struct run *r = kmem.freelist; // 遍历空闲链表的指针
+  while(r){
+    amount++;
+    r = r->next;
+  }
+  release(&kmem.lock);
+
+  return amount * PGSIZE;
 }

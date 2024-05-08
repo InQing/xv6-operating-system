@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -94,4 +95,35 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_trace(void){
+  int mask; // 掩码，第k位为1即代表追踪编号2^k的系统调用
+  //argint获取系统调用的参数
+  if(argint(0, &mask) < 0)
+    return -1;
+  //在进程控制块中加入mask变量，这样fork子进程时复制父进程信息，就能保留mask的值
+  //从而完成参数在进程之间的传递
+  myproc()->mask = mask;
+  return 0;
+}
+
+uint64
+sys_sysinfo(void){
+  struct sysinfo info;
+  uint64 addr;
+  info.freemem = kamount();
+  info.nproc = procammount();
+
+  //sysinfotest中sysinfo系统调用的参数info保存在寄存器a0中，这里获取参数的地址
+  if(argaddr(0, &addr) < 0)
+    return -1;
+
+  // copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+  // 把在内核地址src开始的len大小的数据拷贝到用户进程pagetable的虚地址dstva处
+  if(copyout(myproc()->pagetable, addr, (char*)&info, sizeof(info)) < 0)
+    return -1;
+
+  return 0;
 }
