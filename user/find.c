@@ -7,10 +7,10 @@
 // 遇到目录则递归检索，遇到文件则检查是否匹配
 void find(char *dir, char *file)
 {
-    char new_path[512];
+    char new_path[512]; // 文件路径
     int fd;
-    struct dirent de;
-    struct stat st; // 文件的索引节点
+    struct dirent de; // 目录项，包含inum与name
+    struct stat st; // 文件的FCB
 
     if ((fd = open(dir, 0)) < 0)
     {
@@ -18,7 +18,7 @@ void find(char *dir, char *file)
         return;
     }
 
-    // fstat从文件描述符fd中获取索引节点
+    // fstat从文件描述符fd中获取FCB
     if ((fstat(fd, &st) < 0) || st.type != T_DIR)
     {
         fprintf(2, "find: cannot stat %s\n", dir);
@@ -36,8 +36,6 @@ void find(char *dir, char *file)
     // 遍历该目录下的所有文件
     while (read(fd, &de, sizeof(de)) == sizeof(de))
     {
-        // de.inum==0表示这是一块已经初始化并且可以用来创建文件或者文件夹的位置，所以在读取的过程中应当无视这一块空间
-        // 翻译成人话：该目录下没有任何文件
         if (de.inum == 0)
             continue;
 
@@ -50,18 +48,20 @@ void find(char *dir, char *file)
         char *ptr = new_path + strlen(dir);
         *ptr++ = '/';
         memmove(ptr, de.name, DIRSIZ);
-        *(ptr + DIRSIZ) = 0;
+        *(ptr + DIRSIZ) = 0; // 字符串以整型0结尾表示结束
 
-        // stat从文件名中获取索引节点，用以判断文件格式
+        // stat从文件名中FCB，用以判断文件格式
         if (stat(new_path, &st) < 0)
             continue;
 
         switch (st.type)
         {
+        // 如果是目录则继续递归遍历
         case T_DIR:
             find(new_path, file);
             break;
 
+        // 如果是文件则判断是否是目标，注意找到目标后不要返回，以为目标可能不止一个
         case T_FILE:
             if (!strcmp(de.name, file))
             {

@@ -14,8 +14,8 @@ int main(int argc, char *argv[])
         perror("extra arguments!");
 
     int fd_1[2]; // 管道的文件描述符
-    int fd_2[2];
-    char buf[100]; // 读入缓冲区
+    int fd_2[2]; // 管道半双工，要实现双向通信需要创建两个管道
+    char buf[100]; // 读写缓冲区
 
     if (pipe(fd_1) == -1) // 创建管道
         perror("create pipe");

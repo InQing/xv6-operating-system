@@ -20,7 +20,7 @@ void dfs(int cnt)
     int pid = fork();
 
     if (pid == 0)
-    {
+    {   // 子进程中
         int num = 0; // 父进程筛除后剩余数的个数
         close(p[1]);
         while (read(p[0], &primes[num++], sizeof(int)))
@@ -28,18 +28,18 @@ void dfs(int cnt)
 
         close(p[0]);
         dfs(num - 1); // 最后read返回0，num还要加一次，所以这里减1
-        exit(0);
+        exit(0); // 记得退出
     }
     else
-    {
+    {   // 父进程中
         close(p[0]);
         for (int i = 1; i < cnt; i++)
         {
             if (primes[i] % x != 0)
                 write(p[1], primes + i, sizeof(int));
         }
-        close(p[1]);
-        wait(0);
+        close(p[1]); // 记得及时关闭fd，否则会占用资源
+        wait(0); // 父进程必须要等待子进程的递归都结束了，再返回该层递归
     }
 }
 

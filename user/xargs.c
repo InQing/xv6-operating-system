@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
             exit(0);
         }
         else
-            wait(0);
+            wait(0); // 注意wait，确保子程序接受再进行下一个循环，运行新的子程序
     }
 
     exit(0);
