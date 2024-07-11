@@ -28,6 +28,8 @@ void            consputc(int);
 
 // exec.c
 int             exec(char*, char**);
+void            vmprint(pagetable_t);
+void            printwalk(pagetable_t, int);
 
 // file.c
 struct file*    filealloc(void);
