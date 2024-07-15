@@ -6,6 +6,8 @@
 #include "proc.h"
 #include "defs.h"
 
+extern pagetable_t kernel_pagetable;
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -34,12 +36,7 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // 此处为每个进程创建内核栈，映射到全局内核页表中的代码删除了，放到了allocproc中
   }
   kvminithart();
 }
@@ -121,6 +118,23 @@ found:
     return 0;
   }
 
+  // 进程的内核页表初始化
+  p->kernelpagetable = proc_kvminit();
+  if(p->kernelpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  // 申请内核栈，然后将进程的内核页表映射到内核栈(kernel stack)
+  char *pa = kalloc();
+  if (pa == 0)
+    panic("kalloc");
+  // 由于每个进程都有自己的内核栈了，所以这里可以将内核栈映射到固定的逻辑地址上
+  uint64 va = KSTACK(0);
+  proc_kvmmap(p->kernelpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -149,7 +163,32 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  // 这里要释放两个东西：内核栈与内核页表
+  // 内核栈是每个进程所独有的，所以进程销毁内核栈也销毁，包括页表映射与物理内存
+  // 内核页表本身是每个进程独有的，但其映射的物理内存其实是整个内核的物理内存，是全局的，所以不能释放物理内存，只能释放页表
+
+  // uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+  // 用于释放页表pagetable从va开始npages页的映射，do_free表示是否要释放对应的物理内存
+  // 但uvmunmap()只释放了一级页表，无法满足释放三级页表的需求
+  // 参照freewalk(),手写一个释放三级页表与物理内存的函数
+  // 与 freewalk() 不同的是, freewalk() 执行前需要通过 uvmunmap() 将最低级页目录的映射清除
+  // 即最低级页目录的 PTE 均为 0, 它只负责清除前两级页目录的映射结构和三级页目录的物理内存
+  // 而我们手写的proc_freewalk()则是同时将最低级页目录的 PTE 清零.
+
+  // 要先释放内核栈的映射与物理内存，若先释放了整个页表的映射，就找不到内核栈的物理内存了
+
+  // 释放内核栈的页表映射及物理内存
+  if(p->kstack)
+    uvmunmap(p->kernelpagetable, p->kstack, 1, 1);
+  p->kstack = 0;
+  // 释放内核页表的映射
+  if(p->kernelpagetable)
+    proc_freewalk(p->kernelpagetable);
+  p->kernelpagetable = 0;
+
   p->state = UNUSED;
+
 }
 
 // Create a user page table for a given process,
@@ -220,6 +259,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  u2kvmcopy(p->pagetable, p->kernelpagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -243,11 +283,19 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if(sz + n > PLIC)
+      return -1;
+    if ((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0)
+    {
       return -1;
     }
-  } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    if(u2kvmcopy(p->pagetable, p->kernelpagetable, p->sz, n) < 0)
+      return -1;
+  }
+  else if (n < 0)
+  {
+    uvmdealloc(p->pagetable, sz, sz + n);
+    sz = kvmdealloc(p->kernelpagetable, sz, sz + n);
   }
   p->sz = sz;
   return 0;
@@ -274,6 +322,13 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+
+  // 拷贝用户页表到内核页表
+  if(u2kvmcopy(np->pagetable, np->kernelpagetable, 0, np->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   np->parent = p;
 
@@ -468,15 +523,22 @@ scheduler(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+        // 将内核页表装载入satp寄存器
+        proc_kvminithart(p->kernelpagetable);
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        // 由上两行源代码注释可知这时进程已经结束运行
+        // kvminithart()为何放在这里而不放在found==0处，个人认为是这里"no process is running"的范围更广
+        kvminithart(); // 装载全局内核页表
+
         c->proc = 0;
 
         found = 1;

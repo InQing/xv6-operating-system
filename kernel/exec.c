@@ -116,6 +116,12 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  // 可知exec是把原进程替换成新的进程，所以要先解除原进程kernelpagetable的映射
+  // PGROUNDUP向上取整到PGSIZE的整数倍
+  uvmunmap(p->kernelpagetable, 0, PGROUNDUP(oldsz)/PGSIZE, 0); // do_free设置为0，清除映射即可
+  if(u2kvmcopy(p->pagetable, p->kernelpagetable, 0, p->sz) < 0)
+    goto bad;
+
   if(p->pid == 1)
     vmprint(p->pagetable);
 
