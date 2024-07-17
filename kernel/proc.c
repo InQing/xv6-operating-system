@@ -165,18 +165,6 @@ freeproc(struct proc *p)
   p->xstate = 0;
 
   // 这里要释放两个东西：内核栈与内核页表
-  // 内核栈是每个进程所独有的，所以进程销毁内核栈也销毁，包括页表映射与物理内存
-  // 内核页表本身是每个进程独有的，但其映射的物理内存其实是整个内核的物理内存，是全局的，所以不能释放物理内存，只能释放页表
-
-  // uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
-  // 用于释放页表pagetable从va开始npages页的映射，do_free表示是否要释放对应的物理内存
-  // 但uvmunmap()只释放了一级页表，无法满足释放三级页表的需求
-  // 参照freewalk(),手写一个释放三级页表与物理内存的函数
-  // 与 freewalk() 不同的是, freewalk() 执行前需要通过 uvmunmap() 将最低级页目录的映射清除
-  // 即最低级页目录的 PTE 均为 0, 它只负责清除前两级页目录的映射结构和三级页目录的物理内存
-  // 而我们手写的proc_freewalk()则是同时将最低级页目录的 PTE 清零.
-
-  // 要先释放内核栈的映射与物理内存，若先释放了整个页表的映射，就找不到内核栈的物理内存了
 
   // 释放内核栈的页表映射及物理内存
   if(p->kstack)
@@ -259,6 +247,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  // 拷贝用户页表到内核页表
   u2kvmcopy(p->pagetable, p->kernelpagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.

@@ -338,7 +338,7 @@ kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
-// 清除前两级映射与三级物理内存
+// 清除前两级映射并释放页表
 void freewalk(pagetable_t pagetable)
 {
   // there are 2^9 = 512 PTEs in a page table.
@@ -360,7 +360,7 @@ void freewalk(pagetable_t pagetable)
   kfree((void *)pagetable);
 }
 
-// 清除三级映射与物理内存
+// 清除三级映射并释放页表
 void proc_freewalk(pagetable_t pagetable)
 {
   // there are 2^9 = 512 PTEs in a page table.
@@ -436,7 +436,8 @@ int u2kvmcopy(pagetable_t userpgtbl, pagetable_t kernelpgtbl, uint64 start, uint
 
   uint64 start_page = PGROUNDUP(start); // 从整数页开始
   for (i = start_page; i < start + sz; i += PGSIZE)
-  {
+  { 
+    // 不需要kalloc分配空间了
     if ((pte = walk(userpgtbl, i, 0)) == 0)
       panic("u2kvmcopy: pte should exist");
     if ((*pte & PTE_V) == 0)
@@ -445,6 +446,7 @@ int u2kvmcopy(pagetable_t userpgtbl, pagetable_t kernelpgtbl, uint64 start, uint
     // & ~PTE_U 表示将该页的权限设置为非用户页
     // 必须清除用户页标志，否则内核无法访问。
     flags = PTE_FLAGS(*pte) & (~PTE_U);
+    // 用mappages添加内核页表到该物理地址的映射
     if (mappages(kernelpgtbl, i, PGSIZE, pa, flags) != 0)
       goto err;
   }
