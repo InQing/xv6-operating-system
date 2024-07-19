@@ -13,7 +13,7 @@ answers：注释中已经写出来了，就是0x630
 (4)What value is in the register ra just after the jalr to printf in main?
 
 answers：使用jalr跳转printf后，需要保存返回地址到ra，以供printf结束后回到main继续执行指令。
-所以jalr会将PC+4，也就是下一条指令的地址存入ra中。
+所以jalr会将PC+4（RISC-V中每条指令占4字节），也就是下一条指令的地址存入ra中。
 当前PC指向0x34，故ra=PC+4=0x38
 
 (5)Run the following code.
