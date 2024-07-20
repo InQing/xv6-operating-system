@@ -98,3 +98,35 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigalarm(void){
+  int alarmticks;
+  uint64 handler;
+  if(argint(0, &alarmticks) < 0 || argaddr(1, &handler) < 0)
+    return -1;
+
+  struct proc *p = myproc();
+  p->alarmticks = alarmticks;
+  p->handler = (void (*)())handler;
+  p->passedticks = 0;
+
+  return 0;
+}
+
+uint64
+sys_sigreturn(){
+  struct proc *p = myproc();
+  // 恢复寄存器内容
+  // 这里不能直接让p->trapframe = p->trapframecopy，会造成原p->trapframe的内存无法释放
+  if(p->trapframecopy != p->trapframe + 512) {
+    return -1;
+  }
+  memmove(p->trapframe, p->trapframecopy, sizeof(struct trapframe));
+
+  // 返回前再重新开始计时，这样就不会冲突
+  p->passedticks = 0;
+
+  // 返回值会存储在a0中，如果返回其它值，会覆盖原有的a0，所以只能返回p->trapframe->a0
+  return p->trapframe->a0;
+}

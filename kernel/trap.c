@@ -66,6 +66,19 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
+    // timer interrupt
+    if(which_dev == 2){
+      if(p->alarmticks != 0 && ++p->passedticks == p->alarmticks){
+        // 在修改寄存器前，存一下trapframe的副本
+        p->trapframecopy = p->trapframe + 512;
+        // 不要使用memcpy
+        memmove(p->trapframecopy, p->trapframe, sizeof(struct trapframe));
+
+        // 因为页表已经切换成内核页表了，所以无法索引到handler的物理地址
+        // 只能将程序计数器切到handler，等回到用户空间后再执行
+        p->trapframe->epc = (uint64)p->handler;
+      }
+    }
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);

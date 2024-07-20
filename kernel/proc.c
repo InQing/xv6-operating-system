@@ -121,6 +121,12 @@ found:
     return 0;
   }
 
+  // 初始化alarm 相关参数
+  p->alarmticks = 0;
+  p->handler = 0;
+  p->passedticks = 0;
+  p->trapframecopy = 0;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -149,6 +155,10 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->alarmticks = 0;
+  p->handler = 0;
+  p->passedticks = 0;
+  p->trapframecopy = 0;
   p->state = UNUSED;
 }
 
