@@ -66,8 +66,30 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    // ok
-  } else {
+    // interruput
+  }else if(r_scause() == 13 || r_scause() == 15){
+    // page fault
+    uint64 va = r_stval();
+    char* pa = 0;
+    printf("page fault, va=%p\n", va);
+    
+    // 分配物理地址
+    if((pa = kalloc()) == 0)
+      p->killed = 1;
+    memset(pa, 0, PGSIZE);
+
+    // 添加映射
+    va = PGROUNDDOWN(va);
+    if (pa != 0 && mappages(myproc()->pagetable, va, PGSIZE, (uint64)pa, PTE_W | PTE_R | PTE_U) != 0)
+    {
+      kfree(pa);
+      p->killed = 1;
+    }
+
+    // sepc未+4，结束后会继续执行原指令
+  }else
+  {
+    // other faults
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
