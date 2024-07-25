@@ -71,16 +71,19 @@ usertrap(void)
     // page fault
     uint64 va = r_stval();
     char* pa = 0;
-    printf("page fault, va=%p\n", va);
+    // printf("page fault, va=%p\n", va);
     
-    // 分配物理地址
-    if((pa = kalloc()) == 0)
+    // 杀死va高于分配内存，或杀死va低于用户栈的进程
+    if(va >= p->sz || va < p->trapframe->sp)
       p->killed = 1;
-    memset(pa, 0, PGSIZE);
+    // 或杀死分配物理地址失败的进程,分配成功则置零
+    if(!p->killed && (pa = kalloc()) != 0)
+      memset(pa, 0, PGSIZE);
+    else p->killed = 1;
+  
 
-    // 添加映射
-    va = PGROUNDDOWN(va);
-    if (pa != 0 && mappages(myproc()->pagetable, va, PGSIZE, (uint64)pa, PTE_W | PTE_R | PTE_U) != 0)
+    // 添加映射 
+    if (!p->killed && mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)pa, PTE_W | PTE_R | PTE_U) != 0)
     {
       kfree(pa);
       p->killed = 1;

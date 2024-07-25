@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -101,13 +103,29 @@ walkaddr(pagetable_t pagetable, uint64 va)
     return 0;
 
   pte = walk(pagetable, va, 0);
-  if(pte == 0)
+  if(pte == 0 || (*pte & PTE_V) == 0){
+    // 此处copyin/copyout调用walkaddr，位于内核态，不会发生pagefault
+    // 所以要自己手动分配内存
+    struct proc *p = myproc();
+    // 杀死va高于分配内存，或杀死va低于用户栈的进程
+    if(va >= p->sz || va < p->trapframe->sp)
+      return 0;
+    // 或杀死分配物理地址失败的进程,分配成功则置零
+    if((pa = (uint64)kalloc()) == 0)
+      return 0;
+    memset((void*)pa, 0, PGSIZE);
+    // 添加映射 
+    if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, pa, PTE_W | PTE_R | PTE_U) != 0)
+    {
+      kfree((void*)pa);
+      return 0;
+    }
+  }else if((*pte & PTE_U) == 0){
     return 0;
-  if((*pte & PTE_V) == 0)
-    return 0;
-  if((*pte & PTE_U) == 0)
-    return 0;
-  pa = PTE2PA(*pte);
+  }else{
+    pa = PTE2PA(*pte);
+  }
+
   return pa;
 }
 
@@ -180,8 +198,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+    // 前两级页表未分配,根本不存在第三级页表项
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue;
+    // 最后一级页表项未映射
     if((*pte & PTE_V) == 0)
       continue;
     if (PTE_FLAGS(*pte) == PTE_V)
@@ -316,9 +336,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue;
+    if ((*pte & PTE_V) == 0)
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
