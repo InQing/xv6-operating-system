@@ -65,29 +65,20 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }else if((which_dev = devintr()) != 0){
     // interruput
   }else if(r_scause() == 13 || r_scause() == 15){
     // page fault
     uint64 va = r_stval();
-    char* pa = 0;
     // printf("page fault, va=%p\n", va);
     
     // 杀死va高于分配内存，或杀死va低于用户栈的进程
     if(va >= p->sz || va < p->trapframe->sp)
       p->killed = 1;
     // 或杀死分配物理地址失败的进程,分配成功则置零
-    if(!p->killed && (pa = kalloc()) != 0)
-      memset(pa, 0, PGSIZE);
-    else p->killed = 1;
-  
-
-    // 添加映射 
-    if (!p->killed && mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)pa, PTE_W | PTE_R | PTE_U) != 0)
-    {
-      kfree(pa);
+    va = PGROUNDDOWN(va);
+    if (!p->killed && uvmalloc(p->pagetable, va, va + PGSIZE) == 0)
       p->killed = 1;
-    }
 
     // sepc未+4，结束后会继续执行原指令
   }else

@@ -198,7 +198,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    // 前两级页表未分配,根本不存在第三级页表项
+    // L1级页表项未映射或页表不存在,根本不存在第三级页表
     if((pte = walk(pagetable, a, 0)) == 0)
       continue;
     // 最后一级页表项未映射
