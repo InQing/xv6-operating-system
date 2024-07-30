@@ -67,13 +67,19 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if(r_scause() == 15){
+    // COW fork导致的page fault
+    if(walkaddr_cow(p->pagetable, r_stval()) == 0)
+      p->killed = 1;
+  }
+  else
+  {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
-  if(p->killed)
+  
+  if (p->killed)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
