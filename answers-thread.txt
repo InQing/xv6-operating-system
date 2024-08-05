@@ -1,0 +1,17 @@
+the sequence leading to missing key:
+p1:
+insert(){
+    e->next = n;
+}
+p2:
+insert(){
+    e->next = n; // the same n like p1 
+}
+p1:
+insert(){
+    *p = e;
+}
+p2:
+insert(){
+    *p = e; // so the key-value inserted by p1 disappeared
+}
