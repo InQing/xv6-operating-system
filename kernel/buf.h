@@ -5,8 +5,8 @@ struct buf {
   uint blockno;
   struct sleeplock lock;
   uint refcnt;
-  struct buf *prev; // LRU cache list
-  struct buf *next;
+  uint timestamp; // 时间戳
+  struct buf *next; // 哈希桶的链表指针
   uchar data[BSIZE];
 };
 
