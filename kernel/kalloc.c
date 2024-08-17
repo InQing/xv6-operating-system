@@ -22,7 +22,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-  char name[8];
+  char lockname[8];
 } kmem[NCPU];
 
 void
@@ -30,9 +30,9 @@ kinit()
 {
   int i;
   for (i = 0; i < NCPU; i++){
-    // 将格式化的数据写入lock-name，并指定最大长度为sizeof(lock_name)
-    snprintf(kmem[i].name, 8, "kmem-%d", i);
-    initlock(&kmem[i].lock, kmem[i].name);
+    // 将格式化的数据写入lock-name，并指定最大长度为sizeof(lockname)
+    snprintf(kmem[i].lockname, 8, "kmem-%d", i);
+    initlock(&kmem[i].lock, kmem[i].lockname);
   }
 
   push_off();
@@ -115,15 +115,17 @@ steal(int id){
   int i, sid;
 
   for (i = 1; i < NCPU; i++){
-    sid = (id + i) % NCPU;
+    sid = (id + i) % NCPU; // 向后轮询
     acquire(&kmem[sid].lock);
     if(kmem[sid].freelist){
       slow = fast = kmem[sid].freelist;
 
+      // 快慢双指针，找到一半的位置
       while(fast && fast->next){
         slow = slow->next;
         fast = fast->next->next;
       }
+      // kmem[id]将kmem[sid]链表的前一半偷走
       kmem[id].freelist = kmem[sid].freelist;
       kmem[sid].freelist = slow->next;
       slow->next = 0;
