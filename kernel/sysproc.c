@@ -119,7 +119,7 @@ sys_sigreturn(){
   struct proc *p = myproc();
   // 恢复寄存器内容
   // 这里不能直接让p->trapframe = p->trapframecopy，会造成原p->trapframe的内存无法释放
-  if(p->trapframecopy != p->trapframe + 512) {
+  if(p->trapframecopy != (struct trapframe *)((char *)p->trapframe + 512)) {
     return -1;
   }
   memmove(p->trapframe, p->trapframecopy, sizeof(struct trapframe));
