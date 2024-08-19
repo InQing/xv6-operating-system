@@ -70,7 +70,8 @@ usertrap(void)
     if(which_dev == 2){
       if(p->alarmticks != 0 && ++p->passedticks == p->alarmticks){
         // 在修改寄存器前，存一下trapframe的副本
-        p->trapframecopy = p->trapframe + 512;
+        // 移动到p->trapframe后的512个字节处，位于同一页面
+        p->trapframecopy = (struct trapframe*)((char *)p->trapframe + 512);
         // 不要使用memcpy
         memmove(p->trapframecopy, p->trapframe, sizeof(struct trapframe));
 
