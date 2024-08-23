@@ -388,7 +388,7 @@ bmap(struct inode *ip, uint bn)
   bn -= NDIRECT;
 
   if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
+    // Load single-indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
@@ -398,6 +398,34 @@ bmap(struct inode *ip, uint bn)
       log_write(bp);
     }
     brelse(bp);
+    return addr;
+  }
+  bn -= NINDIRECT;
+
+  // 二级间址
+  if(bn < NDOUBLEINDIRECT){
+    // Load double-indirect block, allocating if necessary.
+
+    // 一级索引
+    if((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev); 
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if ((addr = a[bn / NINDIRECT]) == 0){
+      a[bn / NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
+    // 二级索引
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    if((addr = a[bn % NINDIRECT]) == 0){
+      a[bn % NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
     return addr;
   }
 
@@ -410,8 +438,8 @@ void
 itrunc(struct inode *ip)
 {
   int i, j;
-  struct buf *bp;
-  uint *a;
+  struct buf *bp, *double_bp;
+  uint *a, *b;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -430,6 +458,27 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  // 释放二级间址块
+  if(ip->addrs[NDIRECT + 1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
+    a = (uint*)bp->data;
+    for (i = 0; i < NINDIRECT; ++i){
+      if(a[i]){
+        double_bp = bread(ip->dev, a[i]);
+        b = (uint*)double_bp->data;
+        for (j = 0; j < NINDIRECT; ++j){
+          if (b[j])
+            bfree(ip->dev, b[j]);
+        }
+        brelse(double_bp);
+        bfree(ip->dev, a[i]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
   }
 
   ip->size = 0;
@@ -468,7 +517,6 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
-      tot = -1;
       break;
     }
     brelse(bp);
@@ -480,9 +528,6 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
 // Caller must hold ip->lock.
 // If user_src==1, then src is a user virtual address;
 // otherwise, src is a kernel address.
-// Returns the number of bytes successfully written.
-// If the return value is less than the requested n,
-// there was an error of some kind.
 int
 writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 {
@@ -505,15 +550,16 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
     brelse(bp);
   }
 
-  if(off > ip->size)
-    ip->size = off;
+  if(n > 0){
+    if(off > ip->size)
+      ip->size = off;
+    // write the i-node back to disk even if the size didn't change
+    // because the loop above might have called bmap() and added a new
+    // block to ip->addrs[].
+    iupdate(ip);
+  }
 
-  // write the i-node back to disk even if the size didn't change
-  // because the loop above might have called bmap() and added a new
-  // block to ip->addrs[].
-  iupdate(ip);
-
-  return tot;
+  return n;
 }
 
 // Directories
