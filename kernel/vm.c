@@ -3,8 +3,10 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "proc.h"
 #include "defs.h"
-#include "fs.h"
+#include "fcntl.h"
 
 /*
  * the kernel's page table.
@@ -428,4 +430,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int 
+munmap_write(struct mmap_vma *vma, uint64 addr, int length)
+{
+  uint64 a, write_size;
+  pte_t *pte;
+  struct proc *p = myproc();
+  for (a = addr; a <= addr + length; a += PGSIZE)
+  {
+    if ((pte = walk(p->pagetable, a, 0)) == 0)
+      return -1;
+    // 若需要解除映射的页面还未映射，则略过（此处修改uvmunmap也可）
+    if ((*pte & PTE_V) == 0)
+      continue;
+    // 若页面是脏页面，且mmap方式为共享，则写回磁盘
+    if ((*pte & PTE_D) && (vma->flags & MAP_SHARED))
+    {
+      // 不能将非整数页部分按整数页写入，否则会覆盖原文件的数据
+      write_size = ((addr + length - a >= PGSIZE) ? PGSIZE : (addr + length - a));
+      if (filewrite(vma->file, a, write_size) == -1)
+        return -1;
+    }
+    uvmunmap(p->pagetable, a, 1, 1);
+  }
+
+  return 0;
+}
+
+int 
+dirty_write(int port, uint64 va){
+  struct proc *p = myproc();
+  pte_t *pte;
+  if ((pte = walk(p->pagetable, va, 0)) == 0)
+    return -1;
+  // 第一种情况，未映射
+  if((*pte & PTE_V) == 0)
+    return 1;
+  // 第二种情况，已映射
+  if(port & PROT_WRITE){
+    *pte |= (PTE_D | PTE_W);
+    return 2;
+  }
+
+  return -1;
 }

@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -298,6 +299,16 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  // 复制VMA
+  for (i = 0; i < NVMA; ++i)
+  {
+    if (p->vma[i].addr)
+    {
+      np->vma[i] = p->vma[i];
+      filedup(np->vma[i].file);
+    }
+  }
+
   pid = np->pid;
 
   np->state = RUNNABLE;
@@ -340,13 +351,28 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
+  struct mmap_vma *vma;
+  int i;
 
   if(p == initproc)
     panic("init exiting");
 
+  // 解除所有MMAP页面，清空VMA
+  for (i = 0; i < NVMA; ++i){
+    vma = &p->vma[i];
+    if (vma->addr)
+    {
+      munmap_write(vma, vma->addr, vma->length);
+      fileclose(vma->file);
+      memset(vma, 0, sizeof(struct mmap_vma)); // 清空VMA
+    }
+  }
+
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
+  for (int fd = 0; fd < NOFILE; fd++)
+  {
+    if (p->ofile[fd])
+    {
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
@@ -701,3 +727,5 @@ procdump(void)
     printf("\n");
   }
 }
+
+

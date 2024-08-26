@@ -5,6 +5,7 @@
 #include "kernel/riscv.h"
 #include "kernel/fs.h"
 #include "user/user.h"
+#include "kernel/memlayout.h"
 
 void mmap_test();
 void fork_test();
@@ -128,8 +129,9 @@ mmap_test(void)
   if (close(fd) == -1)
     err("close");
   _v1(p);
-  for (i = 0; i < PGSIZE*2; i++)
+  for (i = 0; i < PGSIZE * 2; i++){
     p[i] = 'Z';
+  }  
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (2)");
 
@@ -227,7 +229,7 @@ mmap_test(void)
   close(fd2);
   unlink("mmap2");
 
-  if(memcmp(p1, "12345", 5) != 0)
+  if (memcmp(p1, "12345", 5) != 0)
     err("mmap1 mismatch");
   if(memcmp(p2, "67890", 5) != 0)
     err("mmap2 mismatch");
