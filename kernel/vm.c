@@ -465,13 +465,13 @@ dirty_write(int port, uint64 va){
   pte_t *pte;
   if ((pte = walk(p->pagetable, va, 0)) == 0)
     return -1;
-  // 第一种情况，未映射
+  // 第二情况，未映射，写指令
   if((*pte & PTE_V) == 0)
-    return 1;
-  // 第二种情况，已映射
+    return 2;
+  // 第三种情况，已映射，写指令
   if(port & PROT_WRITE){
     *pte |= (PTE_D | PTE_W);
-    return 2;
+    return 3;
   }
 
   return -1;

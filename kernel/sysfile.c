@@ -544,6 +544,7 @@ sys_mmap(void)
   if (offest % PGSIZE)
     return -1;
 
+  // 寻找空闲的VMA
   p = myproc();
   for (i = 0; i < NVMA; ++i)
   {

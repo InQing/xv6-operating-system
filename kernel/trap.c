@@ -5,10 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#include "sleeplock.h" 
-#include "fs.h"        
-#include "file.h"      
-#include "fcntl.h"     
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -79,7 +79,7 @@ void usertrap(void)
     struct inode *ip;
     struct mmap_vma *vma = 0;
     uint offest;
-    int i, flags = PTE_U;
+    int i, ret = 0, flags = PTE_U;
 
     // 找到页面错误地址对应的VMA
     for (i = 0; i < NVMA; ++i)
@@ -90,23 +90,28 @@ void usertrap(void)
         break;
       }
     }
-    if (!vma){
+    if (!vma)
+    {
       p->killed = 1;
       goto end;
     }
 
-    // 写指令要设置脏页
-    // 第一种情况：写入的页面未映射。此时直接设置脏页，并映射页面
-    // 第二种情况：写入的页面已映射，但未设置PTE_W标志。此时标记脏页，并设置PTE_W
-    // 否则，杀死进程
-    if (r_scause() == 15)
+    // 脏页设置
+    // 1：页面未映射，读/执行指令:映射为不可写
+    // 2：页面未映射，写指令：直接添加PTE_D与PTE_W标志位
+    // 3：页面已映射，写指令。添加PTE_D标志位，并恢复PTE_W标志位
+    if (r_scause() == 12 || r_scause() == 13)
     {
-      int ret = dirty_write(vma->port, va);
-      if (ret == 1)
+      ret = 1;
+    }
+    else
+    {
+      ret = dirty_write(vma->port, va);
+      if (ret == 2)
       {
         flags |= PTE_D;
       }
-      else if (ret == 2)
+      else if (ret == 3)
       {
         goto end;
       }
@@ -116,8 +121,10 @@ void usertrap(void)
         goto end;
       }
     }
+
     // 为页面分配物理内存，并将va对应的一页文件读入该页面
-    if ((pa = kalloc()) == 0){
+    if ((pa = kalloc()) == 0)
+    {
       p->killed = 1;
       goto end;
     }
@@ -135,8 +142,11 @@ void usertrap(void)
     iunlock(ip);
 
     // 将虚拟地址映射到物理内存，并设置权限
-    // 为了写入脏页，要去除PTE_W标志
-    flags |= (PORT2PTE(vma->port) & (~PTE_W));
+    // 为了设置脏页，情况1要去除PTE_W标志
+    flags |= PORT2PTE(vma->port);
+    if(ret == 1){
+      flags &= (~PTE_W);
+    }
     if (mappages(p->pagetable, va, PGSIZE, (uint64)pa, flags) != 0)
     {
       kfree(pa);
