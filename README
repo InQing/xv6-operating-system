@@ -1,8 +1,0 @@
-This project originates from the MIT course mit6.s081.We create a simple Unix-like 
-operating system named xv6,and add manyuseful functions.
-
-it includes personal code for each lab, 
-solely intended for learning and exchange purposes.
-
-please checkout to other branchs for detailed lab codes,
-such as util,which including lab1 codes.
